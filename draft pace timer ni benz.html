@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Target Pace Timer + Excel Log</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #0f1115;
+    color: #f2f2f2;
+    display: flex;
+    justify-content: center;
+    padding: 24px 16px;
+  }
+  .card {
+    width: 100%;
+    max-width: 460px;
+    background: #1a1d24;
+    border-radius: 16px;
+    padding: 24px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+    transition: background 0.3s;
+  }
+  .card.overtime { background: #3a1414; }
+  h1 { font-size: 18px; margin: 0 0 4px 0; color: #ffffff; }
+  h2 { font-size: 14px; margin: 0 0 4px 0; color: #ffffff; }
+  p.sub { margin: 0 0 20px 0; font-size: 13px; color: #9aa0aa; }
+  p.small { font-size: 12px; color: #9aa0aa; margin: 0 0 4px 0; }
+  label { display: block; font-size: 13px; color: #c4c9d1; margin-bottom: 6px; margin-top: 14px; }
+  input {
+    width: 100%; padding: 12px 14px; border-radius: 10px;
+    border: 1px solid #2c313c; background: #12141a; color: #fff;
+    font-size: 16px; outline: none;
+  }
+  input:focus { border-color: #5b8cff; }
+  button.calc-btn {
+    width: 100%; margin-top: 20px; padding: 14px; border: none; border-radius: 10px;
+    background: #5b8cff; color: #fff; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button.calc-btn:active { background: #4470e0; }
+  .error { color: #ff6b6b; font-size: 13px; margin-top: 10px; display: none; }
+  .results { margin-top: 22px; padding-top: 18px; border-top: 1px solid #2c313c; }
+  .stat { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; }
+  .stat .label { font-size: 13px; color: #9aa0aa; }
+  .stat .value { font-size: 16px; font-weight: 600; color: #ffffff; }
+  .stat .value.highlight { color: #7ba0ff; font-size: 20px; }
+  .hint { font-size: 12px; color: #6b7280; margin-top: 10px; }
+  .divider { margin: 24px 0 4px 0; padding-top: 18px; border-top: 1px solid #2c313c; }
+
+  .timer-display {
+    text-align: center;
+    font-size: 44px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 16px 0;
+    font-variant-numeric: tabular-nums;
+    color: #3ddc84;
+    transition: color 0.3s;
+  }
+  .timer-display.overtime {
+    color: #ff5252;
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.65; }
+  }
+  .timer-sign {
+    font-size: 22px;
+    vertical-align: middle;
+    margin-right: 4px;
+  }
+
+  .btn-row { display: flex; gap: 10px; margin-top: 16px; }
+  button.timer-btn { flex: 1; padding: 14px; border: none; border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer; }
+  #startBtn { background: #3ddc84; color: #06210f; }
+  #startBtn:active { background: #2fc06e; }
+  #stopBtn { background: #ff6b6b; color: #2a0808; }
+  #stopBtn:active { background: #e85555; }
+  #resetBtn { background: #2c313c; color: #f2f2f2; }
+  #resetBtn:active { background: #3a4150; }
+  .status { text-align: center; font-size: 13px; color: #6b7280; margin-top: 14px; }
+  .status.ringing { color: #ff5252; font-weight: 700; }
+  .status.ontrack { color: #3ddc84; font-weight: 600; }
+  .disabled-note { font-size: 12px; color: #6b7280; margin-top: 6px; }
+
+  .log-btn-row { display: flex; gap: 10px; margin-top: 16px; }
+  button.log-btn { flex: 1; padding: 12px; border: none; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  #saveRunBtn { background: #5b8cff; color: #fff; }
+  #saveRunBtn:active { background: #4470e0; }
+  #exportBtn { background: #3ddc84; color: #06210f; }
+  #exportBtn:active { background: #2fc06e; }
+  #exportBtn:disabled { background: #2c313c; color: #6b7280; cursor: not-allowed; }
+  #clearLogBtn { background: #2c313c; color: #f2f2f2; }
+  #clearLogBtn:active { background: #3a4150; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 14px; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid #2c313c; }
+  th { color: #9aa0aa; font-weight: 600; }
+  td { color: #e5e7eb; }
+  .log-empty { font-size: 12px; color: #6b7280; margin-top: 10px; }
+  .log-wrap { max-height: 180px; overflow-y: auto; }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <h1>Target Pace Timer</h1>
+  <p class="sub">Calculate minutes needed for your target rate, then start the countdown. It runs down in green, and once time's up it flips to a rising red overtime counter.</p>
+
+  <label for="sqft">Sqft to finish</label>
+  <input type="number" id="sqft" placeholder="e.g. 1405" inputmode="decimal">
+
+  <label for="targetRate">Target rate (sqft/hr)</label>
+  <input type="number" id="targetRate" value="3500" inputmode="decimal">
+
+  <button class="calc-btn" onclick="calculate()">Calculate</button>
+
+  <div class="error" id="error">Enter valid sqft and target rate (greater than 0).</div>
+
+  <div class="results" id="results" style="display:none;">
+    <div class="stat">
+      <span class="label">Time needed</span>
+      <span class="value highlight" id="timeNeeded">–</span>
+    </div>
+    <div class="stat">
+      <span class="label">In minutes</span>
+      <span class="value" id="timeMinutes">–</span>
+    </div>
+    <div class="stat">
+      <span class="label">Required rate</span>
+      <span class="value" id="rateSqftMin">–</span>
+    </div>
+    <div class="hint" id="hint"></div>
+  </div>
+
+  <div class="divider">
+    <h2>Countdown Timer</h2>
+    <p class="small">Calculate above to auto-load the countdown, or set it manually.</p>
+  </div>
+
+  <label for="alarmMins">Countdown target (minutes)</label>
+  <input type="number" id="alarmMins" placeholder="auto-filled from calculation" inputmode="decimal">
+  <div class="disabled-note" id="alarmNote"></div>
+
+  <div class="timer-display" id="display"><span class="timer-sign" id="timerSign"></span>00:00</div>
+
+  <div class="btn-row">
+    <button class="timer-btn" id="startBtn" onclick="startTimer()">Start</button>
+    <button class="timer-btn" id="stopBtn" onclick="stopTimer()">Stop</button>
+    <button class="timer-btn" id="resetBtn" onclick="resetTimer()">Reset</button>
+  </div>
+
+  <div class="status" id="status">Ready</div>
+
+  <div class="divider">
+    <h2>Session Log</h2>
+    <p class="small">Save each run, then export the whole log as an Excel file.</p>
+  </div>
+
+  <div class="log-btn-row">
+    <button class="log-btn" id="saveRunBtn" onclick="saveRun()">Save this run</button>
+    <button class="log-btn" id="exportBtn" onclick="exportToExcel()" disabled>Export to Excel</button>
+  </div>
+  <div class="log-btn-row">
+    <button class="log-btn" id="clearLogBtn" onclick="clearLog()">Clear log</button>
+  </div>
+
+  <div id="logEmpty" class="log-empty">No runs saved yet.</div>
+  <div class="log-wrap">
+    <table id="logTable" style="display:none;">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Sqft</th>
+          <th>Target/hr</th>
+          <th>Needed (min)</th>
+          <th>Actual (min)</th>
+          <th>Actual /hr</th>
+        </tr>
+      </thead>
+      <tbody id="logBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+/* ---- Calculator ---- */
+let lastSqft = null;
+let lastTargetRate = null;
+let lastMinutesNeeded = null;
+
+function calculate() {
+  const sqft = parseFloat(document.getElementById('sqft').value);
+  const targetRate = parseFloat(document.getElementById('targetRate').value) || 3500;
+  const errorEl = document.getElementById('error');
+  const resultsEl = document.getElementById('results');
+
+  if (!sqft || sqft <= 0 || targetRate <= 0) {
+    errorEl.style.display = 'block';
+    resultsEl.style.display = 'none';
+    return;
+  }
+  errorEl.style.display = 'none';
+
+  const minutesNeeded = (sqft / targetRate) * 60;
+  const rateSqftMin = targetRate / 60;
+
+  const hrs = Math.floor(minutesNeeded / 60);
+  const remMins = (minutesNeeded % 60).toFixed(1);
+
+  let timeStr = '';
+  if (hrs > 0) timeStr += hrs + 'h ';
+  timeStr += remMins + 'm';
+
+  document.getElementById('timeNeeded').textContent = timeStr;
+  document.getElementById('timeMinutes').textContent = minutesNeeded.toFixed(1) + ' min';
+  document.getElementById('rateSqftMin').textContent = rateSqftMin.toFixed(1) + ' sqft/min';
+
+  document.getElementById('hint').textContent =
+    `To hit ${targetRate.toLocaleString()} sqft/hr, you need to finish ${sqft.toLocaleString()} sqft in ${minutesNeeded.toFixed(1)} minutes.`;
+
+  resultsEl.style.display = 'block';
+
+  lastSqft = sqft;
+  lastTargetRate = targetRate;
+  lastMinutesNeeded = minutesNeeded;
+
+  document.getElementById('alarmMins').value = minutesNeeded.toFixed(1);
+  document.getElementById('alarmNote').textContent =
+    `Countdown set to ${minutesNeeded.toFixed(1)} min — matches your target pace.`;
+}
+
+/* ---- Countdown / Overtime Timer ---- */
+let elapsedSec = 0;        // total real seconds since Start (tracked internally for logging)
+let totalSeconds = 0;      // the countdown target, locked in when Start is pressed
+let intervalId = null;
+let alarmTriggered = false;
+let inOvertime = false;
+let audioCtx = null;
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function updateDisplay() {
+  const displayEl = document.getElementById('display');
+  const signEl = document.getElementById('timerSign');
+  const remaining = totalSeconds - elapsedSec;
+
+  if (remaining >= 0) {
+    // Counting down, green
+    displayEl.classList.remove('overtime');
+    signEl.textContent = '';
+    displayEl.childNodes[displayEl.childNodes.length - 1].textContent = formatTime(remaining);
+    document.getElementById('status').textContent = intervalId ? 'Counting down...' : (elapsedSec > 0 ? 'Paused' : 'Ready');
+    document.getElementById('status').classList.remove('ringing');
+    if (elapsedSec > 0) document.getElementById('status').classList.add('ontrack');
+  } else {
+    // Overtime, counting up, red
+    const overtime = -remaining;
+    displayEl.classList.add('overtime');
+    signEl.textContent = '+';
+    displayEl.childNodes[displayEl.childNodes.length - 1].textContent = formatTime(overtime);
+    document.getElementById('status').classList.remove('ontrack');
+    document.getElementById('status').textContent = intervalId ? 'Overtime — past target' : 'Paused (overtime)';
+
+    if (!alarmTriggered) {
+      triggerAlarm();
+    }
+  }
+}
+
+function startTimer() {
+  if (intervalId) return;
+
+  if (totalSeconds === 0) {
+    const alarmMins = parseFloat(document.getElementById('alarmMins').value);
+    if (!alarmMins || alarmMins <= 0) {
+      alert('Enter a countdown target in minutes (or hit Calculate) before starting.');
+      return;
+    }
+    totalSeconds = Math.round(alarmMins * 60);
+  }
+
+  document.getElementById('status').classList.remove('ringing');
+  intervalId = setInterval(() => {
+    elapsedSec++;
+    updateDisplay();
+  }, 1000);
+  updateDisplay();
+}
+
+function stopTimer() {
+  if (intervalId) {
+    clearInterval(intervalId);
+    intervalId = null;
+    updateDisplay();
+  }
+}
+
+function resetTimer() {
+  stopTimer();
+  elapsedSec = 0;
+  totalSeconds = 0;
+  alarmTriggered = false;
+  document.getElementById('card').classList.remove('overtime');
+  document.getElementById('display').classList.remove('overtime');
+  document.getElementById('timerSign').textContent = '';
+  document.getElementById('status').classList.remove('ringing', 'ontrack');
+  document.getElementById('status').textContent = 'Ready';
+  document.getElementById('display').lastChild.textContent = '00:00';
+}
+
+function beep() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = 'sine';
+  osc.frequency.value = 880;
+  gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.25);
+}
+
+function triggerAlarm() {
+  alarmTriggered = true;
+  document.getElementById('card').classList.add('overtime');
+  document.getElementById('status').textContent = 'ALARM — target time reached, now overtime';
+  document.getElementById('status').classList.add('ringing');
+  let beepCount = 0;
+  const beepInterval = setInterval(() => {
+    beep();
+    beepCount++;
+    if (beepCount >= 5) clearInterval(beepInterval);
+  }, 400);
+  if (navigator.vibrate) navigator.vibrate([200,100,200,100,200]);
+}
+
+/* ---- Session Log + Excel Export ---- */
+let sessionLog = [];
+
+function saveRun() {
+  const sqft = lastSqft || parseFloat(document.getElementById('sqft').value);
+  const targetRate = lastTargetRate || parseFloat(document.getElementById('targetRate').value) || 3500;
+
+  if (!sqft || sqft <= 0) {
+    alert('Enter a sqft amount and hit Calculate before saving a run.');
+    return;
+  }
+
+  const actualMinutes = elapsedSec / 60;
+  const actualRate = actualMinutes > 0 ? (sqft / actualMinutes) * 60 : null;
+
+  sessionLog.push({
+    n: sessionLog.length + 1,
+    date: new Date().toLocaleString(),
+    sqft: sqft,
+    targetRate: targetRate,
+    neededMinutes: lastMinutesNeeded ? Number(lastMinutesNeeded.toFixed(1)) : null,
+    actualMinutes: Number(actualMinutes.toFixed(1)),
+    actualRate: actualRate ? Math.round(actualRate) : null
+  });
+
+  renderLog();
+}
+
+function renderLog() {
+  const emptyEl = document.getElementById('logEmpty');
+  const tableEl = document.getElementById('logTable');
+  const bodyEl = document.getElementById('logBody');
+  const exportBtn = document.getElementById('exportBtn');
+
+  if (sessionLog.length === 0) {
+    emptyEl.style.display = 'block';
+    tableEl.style.display = 'none';
+    exportBtn.disabled = true;
+    return;
+  }
+
+  emptyEl.style.display = 'none';
+  tableEl.style.display = 'table';
+  exportBtn.disabled = false;
+
+  bodyEl.innerHTML = sessionLog.map(r => `
+    <tr>
+      <td>${r.n}</td>
+      <td>${r.sqft.toLocaleString()}</td>
+      <td>${r.targetRate.toLocaleString()}</td>
+      <td>${r.neededMinutes ?? '–'}</td>
+      <td>${r.actualMinutes}</td>
+      <td>${r.actualRate ?? '–'}</td>
+    </tr>
+  `).join('');
+}
+
+function clearLog() {
+  sessionLog = [];
+  renderLog();
+}
+
+function exportToExcel() {
+  if (sessionLog.length === 0) return;
+
+  const rows = sessionLog.map(r => ({
+    'Date/Time': r.date,
+    'Sqft': r.sqft,
+    'Target Rate (sqft/hr)': r.targetRate,
+    'Needed Minutes': r.neededMinutes,
+    'Actual Minutes': r.actualMinutes,
+    'Actual Rate (sqft/hr)': r.actualRate
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 20 }, { wch: 10 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 18 }
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Draft Sessions');
+
+  const filename = `draft-sessions-${new Date().toISOString().slice(0,10)}.xlsx`;
+  XLSX.writeFile(wb, filename);
+}
+
+renderLog();
+</script>
+</body>
+</html>
